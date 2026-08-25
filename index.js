@@ -53,40 +53,45 @@ async function connectToWhatsApp() {
         }, 5000);
     }
 
-    // Listener de mensagens atualizado para capturar comandos e mídias corretamente
+    // Listener de mensagens que aceita tanto imagem com legenda quanto responder a uma imagem
     sock.ev.on('messages.upsert', async ({ messages, type }) => {
         if (type !== 'notify') return;
         
         const msg = messages[0];
         if (!msg.message || msg.key.fromMe) return;
 
-        const messageType = Object.keys(msg.message)[0];
+        const remoteJid = msg.key.remoteJid;
         
-        // Pega o texto da mensagem ou a legenda de uma imagem/vídeo
+        // Verifica se a mensagem veio com texto direto ou legenda de mídia
+        const messageType = Object.keys(msg.message)[0];
         const text = msg.message.conversation || 
                      msg.message.imageMessage?.caption || 
-                     msg.message.videoMessage?.caption || '';
+                     msg.message.videoMessage?.caption || 
+                     msg.message.extendedTextMessage?.text || '';
 
-        console.log(`📩 Mensagem recebida: "${text}" | Tipo: ${messageType}`);
+        // Verifica se é o comando de figurinha (.sticker ou .f)
+        const isStickerCommand = text.toLowerCase() === '.sticker' || text.toLowerCase() === '.f';
 
-        // Verifica o comando .sticker
-        if (text.toLowerCase() === '.sticker' || text.toLowerCase() === '.f') {
-            const isImage = messageType === 'imageMessage';
-            const isVideo = messageType === 'videoMessage';
+        if (isStickerCommand) {
+            // Cenário 1: A imagem/vídeo foi enviada junto com a legenda na mesma mensagem
+            const isDirectMedia = messageType === 'imageMessage' || messageType === 'videoMessage';
 
-            if (isImage || isVideo) {
-                console.log('🖼️ Mídia detectada com o comando .sticker! Processando...');
+            // Cenário 2: O usuário respondeu a uma mensagem anterior que continha imagem/vídeo
+            const quotedMessage = msg.message.extendedTextMessage?.contextInfo?.quotedMessage;
+            const isQuotedMedia = quotedMessage && (quotedMessage.imageMessage || quotedMessage.videoMessage);
+
+            if (isDirectMedia || isQuotedMedia) {
+                console.log('🖼️ Mídia válida detectada para figurinha! Processando...');
                 
                 try {
-                    // Aqui entra a lógica de download e conversão para figurinha usando o fluent-ffmpeg
-                    // Exemplo básico de resposta para testar se o fluxo chegou aqui:
-                    await sock.sendMessage(msg.key.remoteJdf || msg.key.remoteJid, { text: 'Recebi sua imagem! Gerando figurinha...' }, { quoted: msg });
+                    // Aqui entra o seu código de baixar a mídia e converter com o ffmpeg/baileys
+                    await sock.sendMessage(remoteJid, { text: 'Recebi! Gerando sua figurinha...' }, { quoted: msg });
                 } catch (err) {
                     console.error('Erro ao processar a mídia:', err);
                 }
             } else {
-                console.log('⚠️ O comando .sticker foi enviado, mas sem uma imagem ou vídeo junto.');
-                await sock.sendMessage(msg.key.remoteJid, { text: 'Envie uma imagem ou vídeo junto com a legenda .sticker!' }, { quoted: msg });
+                console.log('⚠️ Comando .sticker usado, mas nenhuma imagem/vídeo foi encontrada (nem direta, nem respondida).');
+                await sock.sendMessage(remoteJid, { text: 'Envie uma imagem com a legenda .sticker ou responda a uma foto com .sticker!' }, { quoted: msg });
             }
         }
     });
