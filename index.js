@@ -10,6 +10,9 @@ ffmpeg.setFfmpegPath(ffmpegInstaller.path);
 
 const phoneNumber = "351912045423"; // <--- Seu número com DDI e DDD
 
+// Conjunto para evitar processar a mesma mensagem duas vezes
+const processedMessages = new Set();
+
 async function connectToWhatsApp() {
     const { state, saveCreds } = await useMultiFileAuthState('auth_info');
 
@@ -47,7 +50,15 @@ async function connectToWhatsApp() {
     sock.ev.on('messages.upsert', async ({ messages, type }) => {
         if (type !== 'notify') return;
         const msg = messages[0];
-        if (!msg.message) return; // Permitido para mensagens próprias e de outros
+        if (!msg.message) return;
+
+        // Trava anti-duplicidade: se essa mensagem já foi processada, ignora
+        const msgId = msg.key.id;
+        if (processedMessages.has(msgId)) return;
+        processedMessages.add(msgId);
+        
+        // Limpa o ID do cache após 10 segundos para não acumular memória
+        setTimeout(() => processedMessages.delete(msgId), 10000);
 
         const remoteJid = msg.key.remoteJid;
         const messageType = Object.keys(msg.message)[0];
@@ -64,7 +75,7 @@ async function connectToWhatsApp() {
             const isQuotedMedia = quotedMessage && (quotedMessage.imageMessage || quotedMessage.videoMessage);
 
             if (isDirectMedia || isQuotedMedia) {
-                console.log('🖼️ Processando e convertendo para figurinha...');
+                console.log('🖼️ Processando e convertendo para figurinha (única)...');
                 try {
                     const targetMessage = isDirectMedia ? msg : { message: quotedMessage };
                     
