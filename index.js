@@ -8,7 +8,7 @@ const ffmpegInstaller = require('@ffmpeg-installer/ffmpeg');
 
 ffmpeg.setFfmpegPath(ffmpegInstaller.path);
 
-const phoneNumber = "351912045423"; // <--- Seu número com DDI e DDD
+const phoneNumber = "351912345678"; // <--- Seu número com DDI e DDD
 
 async function connectToWhatsApp() {
     const { state, saveCreds } = await useMultiFileAuthState('auth_info');
@@ -47,7 +47,7 @@ async function connectToWhatsApp() {
     sock.ev.on('messages.upsert', async ({ messages, type }) => {
         if (type !== 'notify') return;
         const msg = messages[0];
-        if (!msg.message || msg.key.fromMe) return;
+        if (!msg.message) return; // Permitido para mensagens próprias e de outros
 
         const remoteJid = msg.key.remoteJid;
         const messageType = Object.keys(msg.message)[0];
@@ -66,10 +66,8 @@ async function connectToWhatsApp() {
             if (isDirectMedia || isQuotedMedia) {
                 console.log('🖼️ Processando e convertendo para figurinha...');
                 try {
-                    // Define qual mensagem tem a mídia real para baixar
                     const targetMessage = isDirectMedia ? msg : { message: quotedMessage };
                     
-                    // Baixa o arquivo de mídia
                     const buffer = await downloadMediaMessage(
                         targetMessage,
                         'buffer',
@@ -81,7 +79,6 @@ async function connectToWhatsApp() {
                     const outputFile = path.join(__dirname, `sticker_${Date.now()}.webp`);
                     fs.writeFileSync(tempFile, buffer);
 
-                    // Converte usando o ffmpeg para o formato de Sticker (.webp)
                     await new Promise((resolve, reject) => {
                         ffmpeg(tempFile)
                             .inputOptions(['-y'])
@@ -91,12 +88,10 @@ async function connectToWhatsApp() {
                             .on('error', reject);
                     });
 
-                    // Envia a figurinha de volta no chat
                     await sock.sendMessage(remoteJid, { 
                         sticker: fs.readFileSync(outputFile) 
                     }, { quoted: msg });
 
-                    // Limpa os arquivos temporários do servidor
                     if (fs.existsSync(tempFile)) fs.unlinkSync(tempFile);
                     if (fs.existsSync(outputFile)) fs.unlinkSync(outputFile);
 
