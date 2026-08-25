@@ -1,4 +1,4 @@
-const { default: makeWASocket, useMultiFileAuthState, DisconnectReason } = require('@whiskeysockets/baileys');
+const { default: makeWASocket, useMultiFileAuthState, DisconnectReason, downloadMediaMessage } = require('@whiskeysockets/baileys');
 const { Boom } = require('@hapi/boom');
 const P = require('pino');
 const fs = require('fs');
@@ -6,9 +6,11 @@ const path = require('path');
 const ffmpeg = require('fluent-ffmpeg');
 const ffmpegInstaller = require('@ffmpeg-installer/ffmpeg');
 
+// Configura o caminho do ffmpeg
 ffmpeg.setFfmpegPath(ffmpegInstaller.path);
 
-const phoneNumber = "351912045423"; // <--- SEU NÚMERO AQUI (com DDI e DDD)
+// INSIRA SEU NÚMERO AQUI (Com DDI e DDD, ex: para Portugal use 3519xxxxxxxxx, para o Brasil use 55119xxxxxxxxx)
+const phoneNumber = "351912045423"; // <--- Coloque seu número real aqui!
 
 async function connectToWhatsApp() {
     const { state, saveCreds } = await useMultiFileAuthState('auth_info');
@@ -26,7 +28,7 @@ async function connectToWhatsApp() {
             const shouldReconnect = (lastDisconnect?.error instanceof Boom)?.output?.statusCode !== DisconnectReason.loggedOut;
             console.log('Conexão fechada. Reconectando...', shouldReconnect);
             if (shouldReconnect) {
-                setTimeout(connectToWhatsApp, 3000); // Espera 3 segundos antes de tentar de novo para evitar loop
+                setTimeout(connectToWhatsApp, 3000);
             }
         } else if (connection === 'open') {
             console.log('✅ Bot conectado com sucesso na nuvem!');
@@ -35,9 +37,8 @@ async function connectToWhatsApp() {
 
     sock.ev.on('creds.update', saveCreds);
 
-    // Pede o código de pareamento de forma segura assim que o socket inicializar
+    // Pede o código de pareamento se ainda não estiver registrado
     if (!sock.authState.creds.registered) {
-        // Aguarda alguns segundos para garantir que a conexão websocket abriu
         setTimeout(async () => {
             try {
                 console.log('Solicitando código de pareamento...');
@@ -49,13 +50,45 @@ async function connectToWhatsApp() {
             } catch (error) {
                 console.error("Erro ao gerar código de pareamento:", error);
             }
-        }, 5000); // 5 segundos de espera para garantir conexão estável
+        }, 5000);
     }
 
-    sock.ev.on('messages.upsert', async (m) => {
-        const msg = m.messages[0];
+    // Listener de mensagens atualizado para capturar comandos e mídias corretamente
+    sock.ev.on('messages.upsert', async ({ messages, type }) => {
+        if (type !== 'notify') return;
+        
+        const msg = messages[0];
         if (!msg.message || msg.key.fromMe) return;
-        // Suas mensagens/figurinhas entram aqui
+
+        const messageType = Object.keys(msg.message)[0];
+        
+        // Pega o texto da mensagem ou a legenda de uma imagem/vídeo
+        const text = msg.message.conversation || 
+                     msg.message.imageMessage?.caption || 
+                     msg.message.videoMessage?.caption || '';
+
+        console.log(`📩 Mensagem recebida: "${text}" | Tipo: ${messageType}`);
+
+        // Verifica o comando .sticker
+        if (text.toLowerCase() === '.sticker' || text.toLowerCase() === '.f') {
+            const isImage = messageType === 'imageMessage';
+            const isVideo = messageType === 'videoMessage';
+
+            if (isImage || isVideo) {
+                console.log('🖼️ Mídia detectada com o comando .sticker! Processando...');
+                
+                try {
+                    // Aqui entra a lógica de download e conversão para figurinha usando o fluent-ffmpeg
+                    // Exemplo básico de resposta para testar se o fluxo chegou aqui:
+                    await sock.sendMessage(msg.key.remoteJdf || msg.key.remoteJid, { text: 'Recebi sua imagem! Gerando figurinha...' }, { quoted: msg });
+                } catch (err) {
+                    console.error('Erro ao processar a mídia:', err);
+                }
+            } else {
+                console.log('⚠️ O comando .sticker foi enviado, mas sem uma imagem ou vídeo junto.');
+                await sock.sendMessage(msg.key.remoteJid, { text: 'Envie uma imagem ou vídeo junto com a legenda .sticker!' }, { quoted: msg });
+            }
+        }
     });
 }
 
