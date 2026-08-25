@@ -71,7 +71,7 @@ async function connectToWhatsApp() {
             const isQuotedMedia = quotedMessage && (quotedMessage.imageMessage || quotedMessage.videoMessage);
 
             if (isDirectMedia || isQuotedMedia) {
-                console.log('🖼️ Processando mídia em tela cheia (.s)...');
+                console.log('🖼️ Processando mídia em modo tela cheia esticada (.s)...');
                 try {
                     const targetMessage = isDirectMedia ? msg : { message: quotedMessage };
                     const isVideo = isDirectMedia ? messageType === 'videoMessage' : !!quotedMessage.videoMessage;
@@ -92,10 +92,10 @@ async function connectToWhatsApp() {
                         let command = ffmpeg(tempFile).inputOptions(['-y']);
 
                         if (isVideo) {
-                            // Preenche o quadrado inteiro cortando o excesso proporcionalmente para vídeos
+                            // Estica o vídeo para 512x512 exatos
                             command.outputOptions([
                                 '-vcodec libwebp',
-                                '-vf scale=512:512:force_original_aspect_ratio=increase,crop=512:512,format=rgba,fps=15',
+                                '-vf scale=512:512,format=rgba,fps=15',
                                 '-loop 0',
                                 '-ss 00:00:00',
                                 '-t 00:00:06',
@@ -104,10 +104,10 @@ async function connectToWhatsApp() {
                                 '-vsync 0'
                             ]);
                         } else {
-                            // Preenche o quadrado inteiro cortando o excesso proporcionalmente para imagens
+                            // Estica a imagem para 512x512 exatos
                             command.outputOptions([
                                 '-vcodec libwebp',
-                                '-vf scale=512:512:force_original_aspect_ratio=increase,crop=512:512,format=rgba'
+                                '-vf scale=512:512,format=rgba'
                             ]);
                         }
 
@@ -121,7 +121,7 @@ async function connectToWhatsApp() {
                     if (fs.existsSync(tempFile)) fs.unlinkSync(tempFile);
                     if (fs.existsSync(outputFile)) fs.unlinkSync(outputFile);
 
-                    console.log('✨ Figurinha em tela cheia enviada com sucesso!');
+                    console.log('✨ Figurinha esticada enviada com sucesso!');
                 } catch (err) {
                     console.error('Erro ao converter a figurinha:', err);
                     await sock.sendMessage(remoteJid, { text: 'Erro ao gerar a figurinha. Tente novamente.' }, { quoted: msg });
