@@ -8,9 +8,9 @@ const ffmpegInstaller = require('@ffmpeg-installer/ffmpeg');
 
 ffmpeg.setFfmpegPath(ffmpegInstaller.path);
 
-const phoneNumber = "351912045423"; // <--- Seu número com DDI e DDD
+// Seu número configurado corretamente
+const phoneNumber = "351912045423"; 
 
-// Conjunto para evitar processar a mesma mensagem duas vezes
 const processedMessages = new Set();
 
 async function connectToWhatsApp() {
@@ -52,12 +52,10 @@ async function connectToWhatsApp() {
         const msg = messages[0];
         if (!msg.message) return;
 
-        // Trava anti-duplicidade: se essa mensagem já foi processada, ignora
+        // Trava anti-duplicidade
         const msgId = msg.key.id;
         if (processedMessages.has(msgId)) return;
         processedMessages.add(msgId);
-        
-        // Limpa o ID do cache após 10 segundos para não acumular memória
         setTimeout(() => processedMessages.delete(msgId), 10000);
 
         const remoteJid = msg.key.remoteJid;
@@ -67,7 +65,8 @@ async function connectToWhatsApp() {
                      msg.message.videoMessage?.caption || 
                      msg.message.extendedTextMessage?.text || '';
 
-        const isStickerCommand = text.toLowerCase() === '.sticker' || text.toLowerCase() === '.f';
+        // Comando unificado .s, .sticker ou .f
+        const isStickerCommand = text.toLowerCase() === '.s' || text.toLowerCase() === '.sticker' || text.toLowerCase() === '.f';
 
         if (isStickerCommand) {
             const isDirectMedia = messageType === 'imageMessage' || messageType === 'videoMessage';
@@ -75,10 +74,11 @@ async function connectToWhatsApp() {
             const isQuotedMedia = quotedMessage && (quotedMessage.imageMessage || quotedMessage.videoMessage);
 
             if (isDirectMedia || isQuotedMedia) {
-                console.log('🖼️ Processando e convertendo para figurinha (única)...');
+                console.log('🖼️ Processando mídia com o comando .s...');
                 try {
                     const targetMessage = isDirectMedia ? msg : { message: quotedMessage };
-                    
+                    const isVideo = isDirectMedia ? messageType === 'videoMessage' : !!quotedMessage.videoMessage;
+
                     const buffer = await downloadMediaMessage(
                         targetMessage,
                         'buffer',
@@ -86,17 +86,33 @@ async function connectToWhatsApp() {
                         { logger: P({ level: 'silent' }) }
                     );
 
-                    const tempFile = path.join(__dirname, `temp_${Date.now()}.media`);
+                    const ext = isVideo ? 'mp4' : 'jpg';
+                    const tempFile = path.join(__dirname, `temp_${Date.now()}.${ext}`);
                     const outputFile = path.join(__dirname, `sticker_${Date.now()}.webp`);
                     fs.writeFileSync(tempFile, buffer);
 
                     await new Promise((resolve, reject) => {
-                        ffmpeg(tempFile)
-                            .inputOptions(['-y'])
-                            .toFormat('webp')
-                            .save(outputFile)
-                            .on('end', resolve)
-                            .on('error', reject);
+                        let command = ffmpeg(tempFile).inputOptions(['-y']);
+
+                        if (isVideo) {
+                            command.outputOptions([
+                                '-vcodec libwebp',
+                                '-vf scale=512:512:force_original_aspect_ratio=decrease,format=rgba,pad=512:512:(ow-iw)/2:(oh-ih)/2:color=#00000000,fps=15',
+                                '-loop 0',
+                                '-ss 00:00:00',
+                                '-t 00:00:06',
+                                '-preset default',
+                                '-an',
+                                '-vsync 0'
+                            ]);
+                        } else {
+                            command.outputOptions([
+                                '-vcodec libwebp',
+                                '-vf scale=512:512:force_original_aspect_ratio=decrease,format=rgba,pad=512:512:(ow-iw)/2:(oh-ih)/2:color=#00000000'
+                            ]);
+                        }
+
+                        command.toFormat('webp').save(outputFile).on('end', resolve).on('error', reject);
                     });
 
                     await sock.sendMessage(remoteJid, { 
