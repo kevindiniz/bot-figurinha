@@ -8,7 +8,7 @@ const ffmpegInstaller = require('@ffmpeg-installer/ffmpeg');
 
 ffmpeg.setFfmpegPath(ffmpegInstaller.path);
 
-const phoneNumber = "351912345678"; // <--- Seu número com DDI e DDD
+const phoneNumber = "351912045423"; // <--- Seu número com DDI e DDD
 
 async function connectToWhatsApp() {
     const { state, saveCreds } = await useMultiFileAuthState('auth_info');
